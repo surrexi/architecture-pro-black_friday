@@ -1,23 +1,141 @@
 services:
-  mongodb1:
-    container_name: mongodb1
+  configsvr:
     image: dh-mirror.gitverse.ru/mongo:latest
+    container_name: configsvr
+    command: [ "/bin/bash", "-lc", "bash /scripts/run-configsvr.sh" ]
     volumes:
-      - mongodb1_data_container:/data/db
+      - configdb:/data/configdb
+      - ./scripts:/scripts:ro
+    healthcheck:
+      test: [ "CMD-SHELL", "mongosh --quiet --port 27019 --eval 'db.runCommand({ping:1})' || exit 1" ]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  shard1-1:
+    image: dh-mirror.gitverse.ru/mongo:latest
+    container_name: shard1-1
+    command: [ "/bin/bash", "-lc", "bash /scripts/run-shard1.sh 1 1" ]
+    volumes:
+      - shard1_1:/data/db
+      - ./scripts:/scripts:ro
+    healthcheck:
+      test: [ "CMD-SHELL", "mongosh --quiet --port 27018 --eval 'db.runCommand({ping:1})' || exit 1" ]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  shard1-2:
+    image: dh-mirror.gitverse.ru/mongo:latest
+    container_name: shard1-2
+    command: [ "mongod","--shardsvr","--replSet","shard1RS","--port","27018","--bind_ip_all" ]
+    volumes: [ "shard1_2:/data/db" ]
+    healthcheck:
+      test: [ "CMD-SHELL", "mongosh --quiet --port 27018 --eval 'db.runCommand({ping:1})' || exit 1" ]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  shard1-3:
+    image: dh-mirror.gitverse.ru/mongo:latest
+    container_name: shard1-3
+    command: [ "mongod","--shardsvr","--replSet","shard1RS","--port","27018","--bind_ip_all" ]
+    volumes: [ "shard1_3:/data/db" ]
+    healthcheck:
+      test: [ "CMD-SHELL", "mongosh --quiet --port 27018 --eval 'db.runCommand({ping:1})' || exit 1" ]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  shard2-1:
+    image: dh-mirror.gitverse.ru/mongo:latest
+    container_name: shard2-1
+    command: [ "/bin/bash", "-lc", "bash /scripts/run-shard2.sh 2 1" ]
+    volumes:
+      - shard2_1:/data/db
+      - ./scripts:/scripts:ro
+    healthcheck:
+      test: [ "CMD-SHELL", "mongosh --quiet --port 27018 --eval 'db.runCommand({ping:1})' || exit 1" ]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  shard2-2:
+    image: dh-mirror.gitverse.ru/mongo:latest
+    container_name: shard2-2
+    command: [ "mongod","--shardsvr","--replSet","shard2RS","--port","27018","--bind_ip_all" ]
+    volumes: [ "shard2_2:/data/db" ]
+    healthcheck:
+      test: [ "CMD-SHELL", "mongosh --quiet --port 27018 --eval 'db.runCommand({ping:1})' || exit 1" ]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  shard2-3:
+    image: dh-mirror.gitverse.ru/mongo:latest
+    container_name: shard2-3
+    command: [ "mongod","--shardsvr","--replSet","shard2RS","--port","27018","--bind_ip_all" ]
+    volumes: [ "shard2_3:/data/db" ]
+    healthcheck:
+      test: [ "CMD-SHELL", "mongosh --quiet --port 27018 --eval 'db.runCommand({ping:1})' || exit 1" ]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  mongos:
+    image: dh-mirror.gitverse.ru/mongo:latest
+    container_name: mongos
+    depends_on:
+      configsvr: { condition: service_healthy }
+      shard1-1: { condition: service_healthy }
+      shard1-2: { condition: service_healthy }
+      shard1-3: { condition: service_healthy }
+      shard2-1: { condition: service_healthy }
+      shard2-2: { condition: service_healthy }
+      shard2-3: { condition: service_healthy }
+    command: [ "/bin/bash","-lc","bash /scripts/run-mongos.sh" ]
+    volumes:
+      - ./scripts:/scripts:ro
+    ports:
+      - "27017:27017"
+    healthcheck:
+      test: [ "CMD-SHELL", "mongosh --quiet --host localhost --port 27017 --eval 'sh.status()' > /dev/null || exit 1" ]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    command: [ "redis-server","--save","60","1","--loglevel","notice" ]
+    volumes: [ "redisdata:/data" ]
+    ports: [ "6379:6379" ]
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 5s
+      timeout: 3s
+      retries: 30
 
   pymongo_api:
     container_name: pymongo_api
-    build: 
+    build:
       context: api_app
       dockerfile: Dockerfile
     depends_on:
-      - mongodb1
-    ports:
-      - 8080:8080
+      mongos: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    ports: [ "8080:8080" ]
     environment:
-      MONGODB_URL: "mongodb://mongodb1"
+      MONGODB_URL: "mongodb://mongos:27017/?retryWrites=true&w=majority"
       MONGODB_DATABASE_NAME: "somedb"
-
+      REDIS_URL: "redis://redis:6379/0"
 
 volumes:
-  mongodb1_data_container:
+  configdb:
+  shard1_1:
+  shard1_2:
+  shard1_3:
+  shard2_1:
+  shard2_2:
+  shard2_3:
+  redisdata:

@@ -1,20 +1,34 @@
 # pymongo-api
 
+Шардированный кластер MongoDB (2 шарда × 3 реплики) + mongos-роутер + config server, а также Redis. Приложение подключается к MongoDB через `mongos` и к Redis по внутреннему имени сервиса.
+
 ## Как запустить
 
-Запускаем mongodb и приложение
+Поднимаем кластер MongoDB, Redis и приложение:
 
 ```shell
 docker compose up -d
 ```
 
-Заполняем mongodb данными
+Заполняем MongoDB данными (через mongos):
 
 ```shell
 ./scripts/mongo-init.sh
 ```
 
 ## Как проверить
+
+### Проверка наполненности данными mongoDB с шардами и репликами
+
+```shell
+./scripts/mongo-verify.sh
+```
+
+### Проверка кеширования в Redis
+
+```shell
+./scripts/redis-verify.sh
+```
 
 ### Если вы запускаете проект на локальной машине
 
